@@ -1,0 +1,23 @@
+:root { font-family: system-ui, sans-serif; color: #202124; background: #fff; line-height: 1.5; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 900px; margin: 0 auto; padding: 24px; overflow-wrap: anywhere; }
+.login { max-width: 480px; padding-top: 15vh; text-align: center; }
+h1 { font-size: 1.6rem; margin: 0; }
+h2 { font-size: 1.15rem; }
+header, .actions, form { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+header { justify-content: space-between; }
+section { border-top: 1px solid #ddd; margin-top: 24px; padding-top: 8px; }
+button, input { font: inherit; }
+button { min-height: 44px; padding: 8px 14px; border: 1px solid #777; border-radius: 4px; background: #f7f7f7; cursor: pointer; }
+button:disabled { cursor: default; opacity: .6; }
+input[type=date] { max-width: 100%; min-height: 44px; border: 1px solid #777; padding: 4px; }
+input[type=checkbox] { width: 20px; height: 20px; flex-shrink: 0; }
+:focus-visible { outline: 3px solid #1967d2; outline-offset: 3px; }
+.calendars, .events { list-style: none; padding: 0; }
+.calendars label { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 0; }
+.swatch { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+small { display: block; color: #555; }
+.events li { padding: 12px 0; border-bottom: 1px solid #eee; }
+[role=alert] { color: #a11919; }
+@media (max-width: 480px) { main { padding: 16px; } form label { width: 100%; } }
