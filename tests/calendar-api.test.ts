@@ -15,6 +15,30 @@ function fakeFetch(pages: unknown[], inspect: (url: URL, init: RequestInit) => v
   }) as typeof fetch;
 }
 
+test('default fetch preserves the browser receiver for calendar and event pagination', async context => {
+  const responses = [
+    { items: [], nextPageToken: 'calendars-next' },
+    { items: [{ id: calendar.id, summary: calendar.name, accessRole: calendar.accessRole, timeZone: calendar.timeZone }] },
+    { items: [], nextPageToken: 'events-next' },
+    { items: [{ id: 'event', start: { date: '2026-10-14' }, end: { date: '2026-10-15' } }] },
+  ];
+  const urls: URL[] = [];
+  context.mock.method(globalThis, 'fetch', async function (this: unknown, input: RequestInfo | URL, init?: RequestInit) {
+    // Browser-native fetch rejects an unrelated receiver; arrow stubs hide this bug.
+    if (this !== globalThis) throw new TypeError("Failed to execute 'fetch' on 'Window': Illegal invocation");
+    urls.push(new URL(String(input)));
+    assert.deepEqual(init?.headers, { Authorization: 'Bearer test-token' });
+    assert.ok(responses.length, 'unexpected extra request');
+    return Response.json(responses.shift());
+  });
+  const api = new CalendarApi(() => 'test-token');
+  const calendars = await api.listCalendars(signal());
+  const events = await api.listEvents(calendars, range, signal());
+  assert.equal(events.length, 1);
+  assert.equal(events[0].calendarId, calendar.id);
+  assert.deepEqual(urls.map(url => url.searchParams.get('pageToken')), [null, 'calendars-next', null, 'events-next']);
+});
+
 test('default window clamps month ends and input range rejects invalid/reversed dates', () => {
   assert.deepEqual(defaultRange(new Date(2026, 3, 30)), { start: '2026-02-28', end: '2027-02-28' });
   assert.deepEqual(defaultRange(new Date(2026, 9, 14)), range);

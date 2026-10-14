@@ -56,7 +56,8 @@ export function normalizeEvent(event: GoogleEvent, calendar: Calendar): Calendar
 export class CalendarApi {
   private getToken: () => string;
   private fetcher: typeof fetch;
-  constructor(getToken: () => string, fetcher: typeof fetch = fetch) {
+  // Native browser fetch must retain Window as its receiver when stored on this instance.
+  constructor(getToken: () => string, fetcher: typeof fetch = globalThis.fetch.bind(globalThis)) {
     this.getToken = getToken;
     this.fetcher = fetcher;
   }

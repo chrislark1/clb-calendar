@@ -9,15 +9,20 @@ let calls = 0;
 let lifetime = 3600;
 let blocked = false;
 let partial = false;
-window.google = { accounts: { oauth2: {
-  initTokenClient(config) {
-    return { requestAccessToken() {
+const prompts: string[] = [];
+let revocations = 0;
+const fixtureOAuth = {
+  initTokenClient(config: Parameters<NonNullable<Window['google']>['accounts']['oauth2']['initTokenClient']>[0]) {
+    return { requestAccessToken(options: { prompt: string }) {
+      prompts.push(options.prompt);
       if (blocked) config.error_callback({ type: 'popup_closed' });
       else config.callback({ access_token: 'disposable-token', expires_in: lifetime, scope: partial ? SCOPES[0] : SCOPES.join(' ') });
     } };
   },
-  hasGrantedAllScopes(response, ...scopes) { return scopes.every(scope => response.scope?.split(' ').includes(scope)); },
-} } };
+  hasGrantedAllScopes(response: { scope?: string }, ...scopes: string[]) { return scopes.every(scope => response.scope?.split(' ').includes(scope)); },
+  revoke() { revocations++; },
+};
+window.google = { accounts: { oauth2: fixtureOAuth } };
 window.fetch = async (input, init) => {
   calls++;
   if (init?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
@@ -35,7 +40,7 @@ window.fetch = async (input, init) => {
 
 // Any attempt by application code to persist tokens/data fails this fixture.
 Storage.prototype.setItem = () => { throw new Error('Persistent storage is forbidden in this test'); };
-const root = createRoot(document.getElementById('root')!);
+let root = createRoot(document.getElementById('root')!);
 root.render(<App clientId="disposable.apps.googleusercontent.com" />);
 const results = document.getElementById('results')!;
 const content = () => document.getElementById('root')!.textContent || '';
@@ -99,6 +104,17 @@ document.getElementById('run')!.onclick = async () => {
     button('Sign out');
     await waitFor(() => content().includes('Sign in with Google'));
     check(content() === 'CLB CalendarSign in with Google', 'logout removes all private UI');
+    check(revocations === 0, 'ordinary sign-out preserves Google consent');
+    await login();
+    // Recreate all app state as a document refresh would; Google's saved grant is external.
+    const beforeRemount = calls;
+    const beforeAuthorisation = prompts.length;
+    root.unmount();
+    root = createRoot(document.getElementById('root')!);
+    root.render(<App clientId="disposable.apps.googleusercontent.com" />);
+    await waitFor(() => content() === 'CLB CalendarSign in with Google');
+    check(!content().includes('Fixture Calendar'), 'refresh-equivalent remount hides private information');
+    check(calls === beforeRemount && prompts.length === beforeAuthorisation, 'remount does not fetch data or request a background token');
     await login();
     status = 401;
     button('Refresh');
@@ -109,6 +125,11 @@ document.getElementById('run')!.onclick = async () => {
     await login();
     await waitFor(() => content().includes('Sign in with Google'));
     check(!content().includes('Fixture Calendar'), 'token expiry removes private UI');
-    results.textContent += '\nAll 14 browser checks passed.';
+    lifetime = 3600;
+    await login();
+    check(content().includes('Fixture Calendar'), 'reauthorisation after expiry restores the app');
+    check(prompts.every(prompt => prompt === ''), 'initial and repeat sign-in leave consent and account prompts to Google');
+    check(revocations === 0, 'refresh, expiry and failed authorisation do not revoke consent');
+    results.textContent += '\nAll 20 browser checks passed.';
   } catch (error) { results.textContent += `\nFAIL ${String(error)}`; }
 };

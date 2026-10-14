@@ -89,7 +89,9 @@ export class GoogleAuth {
           error_callback: error => fail(error.type === 'popup_closed'
             ? 'Google sign-in was closed. Please retry.' : 'Google sign-in could not open. Allow popups and retry.'),
         });
-        client.requestAccessToken({ prompt: 'select_account' });
+        // Let Google reuse saved consent, including after a reload; missing consent
+        // is still requested by GIS. Keep this call driven by the sign-in click.
+        client.requestAccessToken({ prompt: '' });
       } catch { fail('Google sign-in could not start. Please retry.'); }
     });
   }
