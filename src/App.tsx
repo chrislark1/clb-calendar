@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { GoogleAuth, loadGoogle } from './auth.ts';
 import { CalendarApi, CalendarApiError, canReadEvents } from './calendar-api.ts';
-import { defaultRange, formatTime, rangeBounds } from './dates.ts';
+import Planner from './Planner.tsx';
+import { PlannerEvents } from './planner-events.ts';
+import { eventDates, filterCalendars, initialHorizon, queryHorizon } from './planner-layout.ts';
 import type { Calendar, CalendarEvent } from './types.ts';
 
 function message(error: unknown): string {
@@ -70,15 +72,14 @@ function CalendarView({ auth, signOut }: { auth: GoogleAuth; signOut: (reason?: 
   const [calendars, setCalendars] = useState<Calendar[]>([]);
   const [selected, setSelected] = useState<string[] | null>(null);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [range, setRange] = useState(defaultRange);
-  const [draftRange, setDraftRange] = useState(range);
+  const [horizon, setHorizon] = useState(initialHorizon);
+  const [timeZone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const [eventCache] = useState(() => new PlannerEvents());
   const [refresh, setRefresh] = useState(0);
   const [discovering, setDiscovering] = useState(true);
   const [retrieving, setRetrieving] = useState(false);
   const [discoveryError, setDiscoveryError] = useState('');
   const [eventError, setEventError] = useState('');
-  const [rangeError, setRangeError] = useState('');
-  const [duration, setDuration] = useState<number | null>(null);
   const [retrieved, setRetrieved] = useState(false);
   // Keep signOut out of request dependencies while retaining its latest callback.
   const exit = useRef(signOut);
@@ -93,9 +94,9 @@ function CalendarView({ auth, signOut }: { auth: GoogleAuth; signOut: (reason?: 
     const controller = new AbortController();
     setDiscovering(true);
     setDiscoveryError('');
+    eventCache.clear();
     setEvents([]);
     setRetrieved(false);
-    setDuration(null);
     api.listCalendars(controller.signal).then(rows => {
       if (controller.signal.aborted) return;
       setCalendars(rows);
@@ -106,38 +107,39 @@ function CalendarView({ auth, signOut }: { auth: GoogleAuth; signOut: (reason?: 
       if (!controller.signal.aborted) handleError(reason, setDiscoveryError);
     }).finally(() => { if (!controller.signal.aborted) setDiscovering(false); });
     return () => controller.abort();
-  }, [api, refresh]);
+  }, [api, refresh, eventCache]);
 
   useEffect(() => {
     const controller = new AbortController();
-    setEvents([]);
-    setDuration(null);
     setRetrieved(false);
     setEventError('');
     setRetrieving(false);
     if (discovering || discoveryError || selected === null) return () => controller.abort();
-    const start = performance.now();
     setRetrieving(true);
-    api.listEvents(calendars.filter(c => selected.includes(c.id)), range, controller.signal).then(rows => {
+    eventCache.load(api, calendars.filter(c => selected.includes(c.id) && canReadEvents(c)), queryHorizon(horizon), controller.signal).then(rows => {
       if (controller.signal.aborted) return;
       setEvents(rows);
-      setDuration(performance.now() - start);
       setRetrieved(true);
     }).catch(reason => {
-      if (!controller.signal.aborted) handleError(reason, setEventError);
+      if (!controller.signal.aborted) {
+        eventCache.clear();
+        setEvents([]);
+        handleError(reason, setEventError);
+      }
     }).finally(() => { if (!controller.signal.aborted) setRetrieving(false); });
     return () => controller.abort();
-  }, [api, calendars, selected, range, discovering, discoveryError]);
+  }, [api, calendars, selected, horizon, discovering, discoveryError, eventCache]);
 
   const busy = discovering || retrieving;
-  return <main>
-    <header><h1>CLB Calendar</h1><div className="actions">
-      <button onClick={() => setRefresh(value => value + 1)} disabled={busy}>Refresh</button>
-      <button onClick={() => signOut()}>Sign out</button>
-    </div></header>
-    <section aria-labelledby="calendars-heading">
-      <h2 id="calendars-heading">Calendars</h2>
-      {discoveryError && <p role="alert">{discoveryError}</p>}
+  const visibleEvents = filterCalendars(events, selected ?? []).filter(event => {
+    const dates = eventDates(event, timeZone);
+    return dates.start < horizon.end && dates.end > horizon.start;
+  });
+  return <main className="calendar-app">
+    <Planner events={visibleEvents} calendars={calendars} horizon={horizon} onHorizonChange={setHorizon} timeZone={timeZone} controls={<>
+    <details className="calendar-controls" open={selected === null || undefined}>
+      <summary>Calendars ({selected?.length ?? 0})</summary>
+      <div className="calendar-popover">
       {discovering ? <p role="status">Loading calendars…</p> : calendars.length === 0 && !discoveryError ? <p>No calendars found.</p> : null}
       <ul className="calendars">{calendars.map(calendar => <li key={calendar.id}>
         <label><input type="checkbox" checked={selected?.includes(calendar.id) ?? false}
@@ -150,32 +152,15 @@ function CalendarView({ auth, signOut }: { auth: GoogleAuth; signOut: (reason?: 
             {calendar.description && <small>{calendar.description}</small>}
           </span></label>
       </li>)}</ul>
-    </section>
-    <section aria-labelledby="range-heading">
-      <h2 id="range-heading">Date range</h2>
-      <form onSubmit={event => {
-        event.preventDefault();
-        try { rangeBounds(draftRange); setRange({ ...draftRange }); setRangeError(''); }
-        catch (reason) { setRangeError(message(reason)); }
-      }}>
-        <label>Start <input type="date" required value={draftRange.start} onChange={e => setDraftRange({ ...draftRange, start: e.target.value })} /></label>
-        <label>End (exclusive) <input type="date" required value={draftRange.end} onChange={e => setDraftRange({ ...draftRange, end: e.target.value })} /></label>
-        <button type="submit" disabled={discovering}>Apply range</button>
-      </form>
-      {rangeError && <p role="alert">{rangeError}</p>}
-    </section>
-    <section aria-labelledby="events-heading" aria-busy={busy}>
-      <h2 id="events-heading">Events</h2>
-      <p>{selected?.length ?? 0} selected calendars · {events.length} events retrieved<br />
-        {range.start} to {range.end} (exclusive) · Retrieval: {duration === null ? '—' : `${(duration / 1000).toFixed(2)} s`}</p>
+      </div>
+    </details>
+      <button data-action="refresh" onClick={() => setRefresh(value => value + 1)} disabled={busy}>Refresh</button>
+      <button onClick={() => signOut()}>Sign out</button>
+    </>} status={<>
+      {discoveryError && <p role="alert">{discoveryError}</p>}
       {eventError && <p role="alert">{eventError}</p>}
       {busy && <p role="status">Retrieving…</p>}
-      {!busy && retrieved && events.length === 0 && <p>{selected?.length ? 'No events in this range.' : 'Select a calendar to retrieve events.'}</p>}
-      <ol className="events">{events.map(event => <li key={`${event.calendarId}:${event.id}`}>
-        <strong>{event.title}</strong>
-        <div>{formatTime(event.start)} → {event.endTimeUnspecified ? 'End unspecified' : formatTime(event.end)}{event.allDay ? ' (end exclusive)' : ''}</div>
-        <small>{event.calendarName} · {event.allDay ? 'All-day' : 'Timed'}</small>
-      </li>)}</ol>
-    </section>
+      {!busy && retrieved && visibleEvents.length === 0 && <p>{selected?.length ? 'No events in this horizon.' : 'Select a calendar to retrieve events.'}</p>}
+    </>} />
   </main>;
 }

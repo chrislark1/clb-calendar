@@ -5,19 +5,82 @@ main { max-width: 900px; margin: 0 auto; padding: 24px; overflow-wrap: anywhere;
 .login { max-width: 480px; padding-top: 15vh; text-align: center; }
 h1 { font-size: 1.6rem; margin: 0; }
 h2 { font-size: 1.15rem; }
-header, .actions, form { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+header, .actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 header { justify-content: space-between; }
 section { border-top: 1px solid #ddd; margin-top: 24px; padding-top: 8px; }
 button, input { font: inherit; }
 button { min-height: 44px; padding: 8px 14px; border: 1px solid #777; border-radius: 4px; background: #f7f7f7; cursor: pointer; }
 button:disabled { cursor: default; opacity: .6; }
-input[type=date] { max-width: 100%; min-height: 44px; border: 1px solid #777; padding: 4px; }
 input[type=checkbox] { width: 20px; height: 20px; flex-shrink: 0; }
 :focus-visible { outline: 3px solid #1967d2; outline-offset: 3px; }
-.calendars, .events { list-style: none; padding: 0; }
+.calendars { list-style: none; padding: 0; }
 .calendars label { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 0; }
 .swatch { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
 small { display: block; color: #555; }
-.events li { padding: 12px 0; border-bottom: 1px solid #eee; }
 [role=alert] { color: #a11919; }
-@media (max-width: 480px) { main { padding: 16px; } form label { width: 100%; } }
+.calendar-app { max-width: none; padding: 0 10px 12px; }
+.planner { margin: 0; padding: 0; border: 0; }
+.planner-top { position: sticky; top: 0; z-index: 10; background: #fff; padding-top: 6px; }
+.planner-toolbar, .toolbar-start, .toolbar-end { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.planner-toolbar { justify-content: space-between; min-height: 34px; }
+.toolbar-start h1 { font-size: 16px; margin-right: 10px; }
+.planner-toolbar button, .calendar-controls summary { min-height: 30px; padding: 4px 9px; font-size: 12px; border: 1px solid #c2c7cd; border-radius: 3px; background: #fafbfc; }
+.planner-toolbar button[aria-label] { min-width: 30px; font-size: 20px; padding: 0 7px; line-height: 26px; }
+.calendar-controls { position: relative; }
+.calendar-controls summary { cursor: pointer; list-style: none; }
+.calendar-controls summary::-webkit-details-marker { display: none; }
+.calendar-controls[open] summary { background: #e9eff5; }
+.calendar-popover { position: absolute; top: calc(100% + 5px); right: 0; width: min(380px, calc(100vw - 24px)); max-height: 65vh; overflow: auto; border: 1px solid #bcc4ce; border-radius: 4px; background: white; box-shadow: 0 4px 15px #0002; padding: 8px 12px; }
+.calendar-popover .calendars { margin: 0; }
+.calendar-popover .calendars label { min-height: 38px; font-size: 12px; }
+.planner-caption { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; min-height: 22px; padding: 2px 0; font-size: 11px; color: #505a65; }
+.planner-caption p { margin: 0; }
+.planner-viewport { overflow-x: auto; overflow-y: hidden; border: 1px solid #bec5ce; border-top: 0; position: relative; }
+.planner-sheet { width: max(100%, var(--min-sheet-width)); font-size: 11px; }
+.weekday-heading, .month-row { display: grid; grid-template-columns: var(--month-width) minmax(0, 1fr); }
+.weekday-heading { height: 22px; background: #f2f4f6; border: 1px solid #bec5ce; }
+.month-heading, .month-label { background: #354454; color: #fff; text-align: center; }
+.month-heading { padding-top: 2px; font-size: 11px; }
+.weekday-clip { overflow: hidden; }
+.weekday-columns { display: grid; grid-template-columns: repeat(42, minmax(0, 1fr)); width: max(100%, calc(var(--min-sheet-width) - var(--month-width))); }
+.day-columns { display: grid; grid-template-columns: repeat(42, minmax(0, 1fr)); }
+.weekday-columns span { text-align: center; padding-top: 2px; border-right: 1px solid #e0e4e8; font-size: 10px; line-height: 17px; }
+.month-row { border-bottom: 1px solid #aeb7c1; }
+.month-row:last-child { border-bottom: 0; }
+.month-label { position: sticky; left: 0; z-index: 3; margin: 0; padding: 2px; font-size: 12px; line-height: 15px; font-weight: 600; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.month-label small { color: #e0e6ed; font-size: 10px; font-weight: normal; line-height: 12px; }
+.month-grid { position: relative; }
+.day-columns { position: absolute; inset: 0; }
+.day-column { position: relative; border-right: 1px solid #e4e7eb; min-width: 0; }
+.day-column span { display: block; text-align: center; height: 20px; line-height: 19px; border-bottom: 1px solid #e1e5e9; font-size: 11px; }
+.weekend { background: #eef1f4; }
+.outside-month { background: #fafbfc; }
+.outside-month.weekend { background: #eef1f4; }
+.day-column.today::after { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 1px; background: #1769aa; pointer-events: none; }
+.day-column.today span { background: #dcecf9; color: #124f80; font-weight: bold; }
+.event-bar { position: absolute; z-index: 1; height: 24px; min-height: 0; border: 0; border-left: 2px solid; border-radius: 0; padding: 0 2px; text-align: left; font-size: 12px; line-height: 24px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.event-bar.wide-event { text-align: center; }
+.event-bar:hover { filter: brightness(1.12); z-index: 2; }
+.event-bar:focus-visible { z-index: 4; }
+@media (max-width: 600px) {
+  .calendar-app { padding: 0 6px 10px; }
+  .planner-toolbar { gap: 4px; }
+  .toolbar-start, .toolbar-end { width: 100%; }
+  .toolbar-start h1 { margin-right: auto; }
+  .toolbar-end { justify-content: flex-end; }
+  .toolbar-end { position: relative; }
+  .calendar-controls { position: static; }
+  .calendar-popover { width: 100%; }
+  .planner-caption { font-size: 10px; }
+}
+.event-details { max-width: min(580px, calc(100vw - 32px)); max-height: 80dvh; overflow: auto; border: 1px solid #aaa; border-radius: 6px; padding: 0; }
+.event-details::backdrop { background: #0005; }
+.details-content { padding: 20px; overflow-wrap: anywhere; }
+.details-content header { align-items: flex-start; }
+.details-content h2 { margin: 0; flex: 1; font-size: 1.2rem; }
+.details-content dl { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 8px; font-size: .85rem; }
+.details-content dt { color: #555; }
+.details-content dd { margin: 0; }
+.details-content .swatch { display: inline-block; margin-right: 6px; }
+.event-description { white-space: pre-wrap; font-size: .9rem; }
+@media (max-width: 480px) { main { padding: 16px; } }
