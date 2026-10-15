@@ -1,6 +1,6 @@
 export const SCOPES = [
   'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
-  'https://www.googleapis.com/auth/calendar.events.readonly',
+  'https://www.googleapis.com/auth/calendar.events',
 ];
 
 interface TokenResponse { access_token?: string; expires_in?: number | string; scope?: string; error?: string }
@@ -77,7 +77,7 @@ export class GoogleAuth {
           callback: response => {
             if (done || generation !== this.generation) return;
             if (response.error || !response.access_token) return fail('Google authorisation was denied or failed. Please retry.');
-            if (!oauth.hasGrantedAllScopes(response, ...SCOPES)) return fail('Both read-only Calendar permissions are required. Please retry and allow both.');
+            if (!oauth.hasGrantedAllScopes(response, ...SCOPES)) return fail('Calendar discovery and event read/write permissions are required. Please retry and allow both.');
             const seconds = Number(response.expires_in);
             if (!Number.isFinite(seconds) || seconds <= 0) return fail('Google returned an invalid token lifetime. Please retry.');
             this.token = response.access_token;

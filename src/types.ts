@@ -36,6 +36,12 @@ export interface CalendarEvent {
   eventType?: string;
   updated?: string;
   organizer?: { email?: string; name?: string; self?: boolean };
+  etag?: string;
+  recurring?: boolean;
+  locked?: boolean;
+  guestsCanModify?: boolean;
+  privateProperties?: Record<string, string>;
+  sharedProperties?: Record<string, string>;
 }
 
 export interface DateRange { start: string; end: string }

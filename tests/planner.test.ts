@@ -1,11 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { Calendar, CalendarEvent } from '../src/types.ts';
+import type { Calendar, CalendarEvent, DateRange } from '../src/types.ts';
 import { CATEGORIES, categoryFor } from '../src/categories.ts';
-import { addDays, addMonths, eventDates, eventKey, filterCalendars, initialHorizon, layoutMonth, monthGeometry, monthsIn, queryHorizon } from '../src/planner-layout.ts';
+import { addDays, addMonths, eventDates, eventKey, filterCalendars, initialHorizon, layoutMonth, monthGeometry, monthsIn, queryHorizon, navigationHorizon, MAX_HORIZON_MONTHS } from '../src/planner-layout.ts';
 import { missingRanges, PlannerEvents } from '../src/planner-events.ts';
 
 const calendar: Calendar = { id: 'one', name: 'One', timeZone: 'Europe/London', accessRole: 'owner', primary: true };
+test('month navigation reuses the horizon, extends nearby edges, and bounds distant jumps', () => {
+  const range = initialHorizon('2026-10-15');
+  assert.deepEqual(navigationHorizon(range, '2026-11-01'), range);
+  assert.deepEqual(navigationHorizon(range, '2027-09-01'), { ...range, end: '2027-10-01' });
+  assert.deepEqual(navigationHorizon(range, '2026-07-01'), { ...range, start: '2026-07-01' });
+  for (const date of ['1900-01-01', '2032-06-01', '2199-12-01']) {
+    const next = navigationHorizon(range, date);
+    assert.ok(monthsIn(next).includes(date));
+    assert.ok(monthsIn(next).length <= MAX_HORIZON_MONTHS);
+  }
+});
 function allDay(id: string, start: string, end: string, calendarId = 'one'): CalendarEvent {
   return { id, calendarId, calendarName: 'One', calendarTimeZone: 'Europe/London', title: id,
     start: { kind: 'date', date: start }, end: { kind: 'date', date: end }, allDay: true, endTimeUnspecified: false };
@@ -171,4 +182,25 @@ test('failed or cancelled retrieval never commits partial session coverage', asy
     await cache.load(api, [calendar], range, new AbortController().signal);
     assert.equal(calls, 3, 'first calendar must be fetched again because transaction never committed');
   }
+});
+
+test('horizon retention evicts distant events and coverage while retaining overlap and hidden-calendar data', async () => {
+  const cache = new PlannerEvents();
+  const signal = new AbortController().signal;
+  const calls: DateRange[] = [];
+  const api = { async listEvents(_calendars: Calendar[], range: DateRange) {
+    calls.push(range); return range.start < '2030-01-01' ? [allDay('old', '2026-10-01', '2026-10-02'), allDay('span', '2026-10-01', '2033-01-01')] : [allDay('future', '2032-06-01', '2032-06-02')];
+  } };
+  const old = { start: '2026-08-01', end: '2027-09-01' };
+  await cache.load(api, [calendar], old, signal);
+  cache.retain({ start: '2026-09-01', end: '2027-09-01' });
+  await cache.load(api, [calendar], { start: '2026-10-01', end: '2027-01-01' }, signal);
+  assert.equal(calls.length, 1, 'overlapping retained coverage avoids refetch');
+  const future = { start: '2032-04-01', end: '2033-05-01' };
+  cache.retain(future);
+  const rows = await cache.load(api, [calendar], future, signal);
+  assert.deepEqual(rows.map(event => event.id).sort(), ['future', 'span']);
+  cache.retain(old);
+  await cache.load(api, [calendar], old, signal);
+  assert.equal(calls.length, 3, 'evicted coverage is fetched again when revisited');
 });

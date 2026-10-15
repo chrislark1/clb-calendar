@@ -21,6 +21,13 @@ export function addMonths(date: string, months: number): string {
 export function initialHorizon(today = dateInput(new Date())): DateRange {
   return { start: addMonths(today, -2), end: addMonths(today, 11) };
 }
+export const MAX_HORIZON_MONTHS = 36;
+export function navigationHorizon(range: DateRange, date: string): DateRange {
+  const start = monthStart(date) < range.start ? monthStart(date) : range.start;
+  const end = date >= range.end ? addMonths(date, 1) : range.end;
+  const distance = (Number(end.slice(0, 4)) - Number(start.slice(0, 4))) * 12 + Number(end.slice(5, 7)) - Number(start.slice(5, 7));
+  return distance > MAX_HORIZON_MONTHS ? initialHorizon(date) : { start, end };
+}
 export function monthsIn(range: DateRange): string[] {
   const months: string[] = [];
   for (let month = monthStart(range.start); month < range.end; month = addMonths(month, 1)) months.push(month);

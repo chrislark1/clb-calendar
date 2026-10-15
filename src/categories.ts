@@ -11,12 +11,19 @@ export const CATEGORIES = {
   Other: { color: '#424242', text: '#FFFFFF' },
 } as const;
 export type Category = keyof typeof CATEGORIES;
+export const CATEGORY_PROPERTY = 'clbCalendarCategory';
+export function isCategory(value: unknown): value is Category {
+  return typeof value === 'string' && Object.hasOwn(CATEGORIES, value);
+}
 
 // Configure defaults here using IDs discovered in Google Calendar. Calendar
 // ownership and category are independent; never infer categories from owners.
 export const CALENDAR_CATEGORIES: Readonly<Record<string, Category>> = {};
 export function categoryFor(event: CalendarEvent, mapping = CALENDAR_CATEGORIES): Category {
-  return mapping[event.calendarId] ?? 'Other';
+  const explicit = event.sharedProperties?.[CATEGORY_PROPERTY];
+  if (isCategory(explicit)) return explicit;
+  const fallback = Object.hasOwn(mapping, event.calendarId) ? mapping[event.calendarId] : undefined;
+  return isCategory(fallback) ? fallback : 'Other';
 }
 
 export function calendarColor(color?: string): string {

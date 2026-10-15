@@ -22,6 +22,7 @@ test('initial authorisation requests only Calendar scopes without forcing select
   const sdk = stub();
   const auth = new GoogleAuth('public-client-id', () => {});
   const promise = auth.authorize(sdk.oauth);
+  assert.deepEqual(SCOPES, ['https://www.googleapis.com/auth/calendar.calendarlist.readonly', 'https://www.googleapis.com/auth/calendar.events']);
   assert.equal(sdk.config().scope, SCOPES.join(' '));
   assert.equal(sdk.config().include_granted_scopes, false);
   assert.deepEqual(sdk.prompts, ['']);

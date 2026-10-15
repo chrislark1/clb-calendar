@@ -3,8 +3,10 @@ import { GoogleAuth, loadGoogle } from './auth.ts';
 import { CalendarApi, CalendarApiError, canReadEvents } from './calendar-api.ts';
 import Planner from './Planner.tsx';
 import { PlannerEvents } from './planner-events.ts';
-import { eventDates, filterCalendars, initialHorizon, queryHorizon } from './planner-layout.ts';
+import { addDays, eventDates, filterCalendars, initialHorizon, navigationHorizon, queryHorizon } from './planner-layout.ts';
 import type { Calendar, CalendarEvent } from './types.ts';
+import EventEditor from './EventEditor.tsx';
+import { canWriteCalendar, editingReason } from './editor-model.ts';
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong. Please retry.';
@@ -81,6 +83,8 @@ function CalendarView({ auth, signOut }: { auth: GoogleAuth; signOut: (reason?: 
   const [discoveryError, setDiscoveryError] = useState('');
   const [eventError, setEventError] = useState('');
   const [retrieved, setRetrieved] = useState(false);
+  const [editor, setEditor] = useState<{ original?: CalendarEvent; startDate?: string } | null>(null);
+  const [reloadEvents, setReloadEvents] = useState(0);
   // Keep signOut out of request dependencies while retaining its latest callback.
   const exit = useRef(signOut);
   exit.current = signOut;
@@ -99,6 +103,7 @@ function CalendarView({ auth, signOut }: { auth: GoogleAuth; signOut: (reason?: 
     setRetrieved(false);
     api.listCalendars(controller.signal).then(rows => {
       if (controller.signal.aborted) return;
+      setRetrieving(true);
       setCalendars(rows);
       setSelected(previous => previous === null
         ? rows.filter(c => c.primary && canReadEvents(c)).map(c => c.id)
@@ -116,6 +121,7 @@ function CalendarView({ auth, signOut }: { auth: GoogleAuth; signOut: (reason?: 
     setRetrieving(false);
     if (discovering || discoveryError || selected === null) return () => controller.abort();
     setRetrieving(true);
+    eventCache.retain(queryHorizon(horizon));
     eventCache.load(api, calendars.filter(c => selected.includes(c.id) && canReadEvents(c)), queryHorizon(horizon), controller.signal).then(rows => {
       if (controller.signal.aborted) return;
       setEvents(rows);
@@ -128,7 +134,25 @@ function CalendarView({ auth, signOut }: { auth: GoogleAuth; signOut: (reason?: 
       }
     }).finally(() => { if (!controller.signal.aborted) setRetrieving(false); });
     return () => controller.abort();
-  }, [api, calendars, selected, horizon, discovering, discoveryError, eventCache]);
+  }, [api, calendars, selected, horizon, discovering, discoveryError, eventCache, reloadEvents]);
+
+  function afterMutation(calendarId: string, saved?: CalendarEvent) {
+    setRetrieving(true);
+    setRetrieved(false);
+    eventCache.invalidate(calendarId);
+    setEvents(previous => previous.filter(event => event.calendarId !== calendarId));
+    setSelected(previous => [...new Set([...(previous ?? []), calendarId])]);
+    if (saved) {
+      const dates = eventDates(saved, timeZone);
+      setHorizon(previous => {
+        const startRange = navigationHorizon(previous, dates.start);
+        const wholeEvent = navigationHorizon(startRange, addDays(dates.end, -1));
+        return wholeEvent.start <= dates.start && wholeEvent.end > dates.start ? wholeEvent : startRange;
+      });
+    }
+    setReloadEvents(value => value + 1);
+    setEditor(null);
+  }
 
   const busy = discovering || retrieving;
   const visibleEvents = filterCalendars(events, selected ?? []).filter(event => {
@@ -136,7 +160,21 @@ function CalendarView({ auth, signOut }: { auth: GoogleAuth; signOut: (reason?: 
     return dates.start < horizon.end && dates.end > horizon.start;
   });
   return <main className="calendar-app">
-    <Planner events={visibleEvents} calendars={calendars} horizon={horizon} onHorizonChange={setHorizon} timeZone={timeZone} controls={<>
+    <Planner events={visibleEvents} calendars={calendars} horizon={horizon} onHorizonChange={setHorizon} timeZone={timeZone} loading={busy}
+      onCreate={calendars.some(canWriteCalendar) ? date => setEditor({ startDate: date }) : undefined} onEdit={event => {
+      if (!editingReason(event, calendars.find(c => c.id === event.calendarId))) setEditor({ original: event });
+    }} onDelete={async (event, signal) => {
+      const calendar = calendars.find(c => c.id === event.calendarId);
+      const reason = editingReason(event, calendar);
+      if (!calendar || reason) throw new Error(reason || 'This calendar is unavailable.');
+      try {
+        await api.deleteEvent(calendar, event, signal);
+        if (!signal.aborted) afterMutation(calendar.id);
+      } catch (error) {
+        if (error instanceof CalendarApiError && error.status === 401) exit.current(error.message);
+        throw error;
+      }
+    }} controls={<>
     <details className="calendar-controls" open={selected === null || undefined}>
       <summary>Calendars ({selected?.length ?? 0})</summary>
       <div className="calendar-popover">
@@ -154,6 +192,7 @@ function CalendarView({ auth, signOut }: { auth: GoogleAuth; signOut: (reason?: 
       </li>)}</ul>
       </div>
     </details>
+      <button disabled={busy || !calendars.some(canWriteCalendar)} onClick={() => setEditor({})}>New event</button>
       <button data-action="refresh" onClick={() => setRefresh(value => value + 1)} disabled={busy}>Refresh</button>
       <button onClick={() => signOut()}>Sign out</button>
     </>} status={<>
@@ -162,5 +201,7 @@ function CalendarView({ auth, signOut }: { auth: GoogleAuth; signOut: (reason?: 
       {busy && <p role="status">Retrieving…</p>}
       {!busy && retrieved && visibleEvents.length === 0 && <p>{selected?.length ? 'No events in this horizon.' : 'Select a calendar to retrieve events.'}</p>}
     </>} />
+    {editor && <EventEditor api={api} calendars={calendars} original={editor.original} startDate={editor.startDate}
+      onClose={() => setEditor(null)} onExpired={reason => signOut(reason)} onSaved={afterMutation} />}
   </main>;
 }
