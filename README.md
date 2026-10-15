@@ -1,6 +1,6 @@
 # CLB Calendar
 
-Google Calendar household planner with ordinary event creation, editing and deletion. React + TypeScript + Vite; a dense, Excel-inspired rolling planner with collapsible calendar selection and event details. No backend, database, persistent event cache, service worker, offline support or deployment automation. M2.1 provides the rolling planner layout; M3.1 adds a lightweight event editor. Grid-based date selection and other M3.2 features are not included.
+Google Calendar household planner with ordinary event creation, editing and deletion. React + TypeScript + Vite; a dense, Excel-inspired rolling planner with collapsible calendar selection, date-based creation and event details. No backend, database, persistent event cache, service worker or offline support. GitHub Actions builds and publishes the static application to GitHub Pages.
 
 ## Install and run
 
@@ -51,7 +51,18 @@ npm run build
 npm run preview
 ```
 
-Open **http://localhost:4173/** for the build preview. Publish only the contents of `dist/` to GitHub Pages or another HTTPS static host. Vite uses `base: './'`, so assets work under `/clb-calendar/` as well as at a domain root; there is no router or server fallback requirement. Set the client ID before building, and rebuild to change it. Do not deploy the source tree, `.env.local` or the test fixture. No GitHub Actions workflow is included.
+Open **http://localhost:4173/clb-calendar/** for the production preview. Vite builds with `base: '/clb-calendar/'` for **https://chrislark1.github.io/clb-calendar/**; normal localhost development stays at `/`. Publish only `dist/`, never the source tree, `.env.local` or browser test fixtures. The client ID is embedded at build time; rebuild to change it.
+
+## GitHub Pages deployment
+
+Review `.github/workflows/pages.yml` and `vite.config.ts` before committing/pushing this configuration; a push to `main` will trigger deployment once Pages is configured.
+
+1. In the repository's **Settings → Secrets and variables → Actions → Variables**, add the repository variable **VITE_GOOGLE_CLIENT_ID** with the Google Web application client ID. It is a public frontend identifier, not a client secret. `.env.local` remains ignored and continues to supply local development configuration; Actions uses the repository variable instead.
+2. In **Settings → Pages → Build and deployment**, select **GitHub Actions** as Source. Ensure Actions are enabled and repository policies allow the official `actions/*` actions. If GitHub reports Pages unavailable for the repository's visibility/plan, resolve that in repository/account settings first.
+3. In the Google OAuth Web client's **Authorised JavaScript origins**, add **https://chrislark1.github.io** (no `/clb-calendar/` path). Keep the localhost origins for development and preview. No redirect URI is required by the existing GIS popup flow.
+4. After review, push the configuration to `main`, or use **Actions → Deploy GitHub Pages → Run workflow** on `main`. The workflow runs `npm ci`, existing tests, TypeScript checks and the production build, then publishes only `dist/` using the official Pages Actions. A missing client-ID variable fails the build. Manual runs on other branches cannot deploy.
+
+The `github-pages` environment records the deployment URL. Configure required reviewers there if each future deployment needs approval; otherwise successful pushes to `main` deploy automatically. The configuration can be validated locally without publishing, and adding it locally does not enable Pages or change GitHub settings. See the [GitHub Pages workflow guide](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages) and [Vite deployment guide](https://vite.dev/guide/static-deploy.html#github-pages).
 
 ## Architecture and behaviour
 

@@ -1,4 +1,6 @@
 import { defineConfig } from 'vite';
 
-// Relative assets work at both a GitHub Pages repository path and a domain root.
-export default defineConfig({ base: './' });
+// Keep localhost development at /; builds and preview use the repository URL.
+export default defineConfig(({ command, isPreview }) => ({
+  base: command === 'serve' && !isPreview ? '/' : '/clb-calendar/',
+}));
